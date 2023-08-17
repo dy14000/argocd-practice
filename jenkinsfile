@@ -3,6 +3,11 @@ pipeline {
     triggers {
         githubPush()
     }
+    environment { //젠킨스에 저장된 자격증명 정보를  GIUHUB_CREDENTIA에 저장
+        //GIUHUB_CREDENTIA_USR: 자격증명 생명할때 입력한 username가 저장된 환경변수
+        //GIUHUB_CREDENTIA_PSW: 자격증명 생명할때 입력한 PSW가 저장된 환경변수
+        GIUHUB_CREDENTIAL = credentials('github-flask-cicd')
+    }
     options {
         timestamps()
     }
@@ -10,69 +15,66 @@ pipeline {
         stage('Github Repository Clone & Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/dy14000/jenkins-apache2.git'
+                    url: 'https://github.com/dy14000/argocd-practice.git'
             }
         }
-        stage('Docker Build1') {
+        stage('Docker Build nginx') {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub' ) { 
-                    docker.build('dy14000/jenkins-apache2', '--no-cache ./ubuntu_apache2') // plugin > docker pilpeline 설치시 사용가능함함
+                    docker.build('dy14000/jenkins-nginx', './ubuntu_nginx') // plugin > docker pilpeline 설치시 사용가능함함
                    // docker build <계정명>/<리포지토리명|이미지명>:<태그|버전>
                     }
                 }
             }
         }
-        stage('Docker Build2') {
-            steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub' ) { 
-                    docker.build('dy14000/jenkins-nginx', '--no-cache ./ubuntu_nginx') // plugin > docker pilpeline 설치시 사용가능함함
-                   // docker build <계정명>/<리포지토리명|이미지명>:<태그|버전>
-                    }
-                }
-            }
-        }
-        stage('Docker Build3') {
-            steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub' ) { 
-                    docker.build('dy14000/jenkins-nginxlb', '--no-cache ./ubuntu_nginx_loadbalancer') // plugin > docker pilpeline 설치시 사용가능함함
-                   // docker build <계정명>/<리포지토리명|이미지명>:<태그|버전>
-                    }
-                }
-            }
-        }
-        stage('Docker Image Push1') {
-            steps {
-                script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {  
-                        def img = docker.image('dy14000/jenkins-apache2')
-                        img.push('latest')
-                        img.push('0.1')
-                    }
-                }
-            }
-        }
-        stage('Docker Image Push2') {
+        stage('Docker Image Push jenkins nginx') {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {  
                         def img = docker.image('dy14000/jenkins-nginx')
                         img.push('latest')
-                        img.push('0.1')
+                        img.push('0.1.1')
                     }
                 }
             }
         }
-        stage('Docker Image Push3') {
+        stage('github create release') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {  
-                        def img = docker.image('dy14000/jenkins-nginxlb')
-                        img.push('latest')
-                        img.push('0.1')
-                    }
+                    def response = sh(script: """
+                        curl -sSL \
+                             -X POST \
+                             -H "Accept: application/vnd.github+json" \
+                             -H "Authorization: Bearer ${GIUHUB_CREDENTIAL_PSW}" \
+                             -H "X-GitHub-Api-Version: 2022-11-28" \
+                             https://api.github.com/repos/dy14000/argocd-practice/releases \
+                             -d '{
+                                 "tag_name":"v1.1.0",
+                                 "target_commitish":"main",
+                                 "name":"v1.1.0",
+                                 "body":"tag, name 변경",
+                                 "draft":false,
+                                 "prerelease":false,
+                                 "generate_release_notes":false
+                                }'
+                    """, returnStdout: true) // 스크립트 실행 후 출력 결과를 respons 변수에 변수에 저장
+
+                    def json = readJSON text: "$response"
+                    def id = json.id
+
+                    sh 'tar -zcvf flask-web.tar.gz ./src'
+
+                    sh """
+                         curl -sSL \
+                              -X POST \
+                              -H "Accept: application/vnd.github+json" \
+                              -H "Authorization: Bearer ${GIUHUB_CREDENTIAL_PSW}" \
+                              -H "X-GitHub-Api-Version: 2022-11-28" \
+                              -H "Content-Type: application/octet-stream" \
+                              "https://uploads.github.com/repos/dy14000/argocd-practice/releases/${id}/assets?name=argocd.tar.gz" \
+                              --data-binary "@argocd.tar.gz"
+                    """
                 }
             }
         }

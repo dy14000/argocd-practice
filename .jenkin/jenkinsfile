@@ -7,7 +7,7 @@ pipeline {
     environment { //젠킨스에 저장된 자격증명 정보를  GIUHUB_CREDENTIA에 저장
         //GIUHUB_CREDENTIA_USR: 자격증명 생명할때 입력한 username가 저장된 환경변수
         //GIUHUB_CREDENTIA_PSW: 자격증명 생명할때 입력한 PSW가 저장된 환경변수
-        GIUHUB_CREDENTIAL = credentials('github-flask-cicd')
+        GIUHUB_CREDENTIAL = credentials('argocd-token')
     }
     options {
         timestamps()
